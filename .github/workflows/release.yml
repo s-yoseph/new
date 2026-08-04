@@ -1,0 +1,59 @@
+# Release Drafter and Publisher
+#
+# Trigger is intentionally limited to `closed`. The drafter runs with
+# `commitish: develop`, so its output only ever reflects merged PRs — firing on
+# `synchronize` re-computed an identical draft on every push to every open PR
+# (334 of 431 runs in one 34-day window). Do not re-add `opened`/`synchronize`.
+name: Release Drafter and Publisher
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - develop
+
+# Single draft release is shared mutable state; serialise updates instead of
+# letting concurrent merges race. Never cancel — a dropped run loses its entry.
+concurrency:
+  group: release-drafter
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Update release draft
+        id: drafter
+        uses: release-drafter/release-drafter@v6
+        with:
+          config-name: release-drafter.yml
+          commitish: develop
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish draft release
+        if: contains(github.event.pull_request.labels.*.name, 'Publish')
+        uses: actions/github-script@v7
+        env:
+          DRAFT_ID: ${{ steps.drafter.outputs.id }}
+        with:
+          script: |
+            const releaseId = Number(process.env.DRAFT_ID);
+            if (!Number.isInteger(releaseId) || releaseId <= 0) {
+              core.setFailed("Release drafter returned no draft id; nothing to publish.");
+              return;
+            }
+            const { data } = await github.rest.repos.updateRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: releaseId,
+              draft: false,
+              prerelease: false,
+            });
+            core.info(`Published release ${data.tag_name} (${data.html_url}).`);
