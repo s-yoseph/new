@@ -8,47 +8,65 @@ template: |
 
   **Full Changelog**: https://github.com/$OWNER/$REPOSITORY/compare/$PREVIOUS_TAG...v$RESOLVED_VERSION
 
-categories:
-  - title: 'Breaking Changes'
-    labels:
-      - 'Major'
-  - title: 'Enhancements'
-    labels:
-      - 'Enhancement'
-      - 'Dev Task'
-      - 'Feature'
-      - 'Dev Process Optimization'
-      - 'State/API'
-      - 'Design/UI'
-  - title: 'Bug Fixes'
-    labels:
-      - 'Bug'
-      - 'Hot Fix'
-  - title: 'Tasks'
-    labels:
-      - 'Task'
-
 change-template: '- $TITLE @$AUTHOR (#$NUMBER)'
 
-version-resolver:
-  major:
-    labels: 
-      - 'Major'
-  minor:
-    labels:
-      - 'Enhancement'
-      - 'Dev Task'
-      - 'Feature'
-      - 'Dev Process Optimization'
-      - 'State/API'
-      - 'Design/UI'
-  patch:
-    labels:
-      - 'Bug'
-      - 'Hot Fix'
-      - 'Task'
-      - 'Security'
-  default: patch
+# Categories describe the whole classification pipeline in v7: `type: changelog`
+# (the default) renders a section, `pre-exclude` drops changes before anything
+# else runs, and `version-resolver` feeds $RESOLVED_VERSION without rendering.
+# The v6 `categories[*].labels`, `exclude-labels` and `version-resolver` keys
+# are deprecated and warn on every run; the blocks below are their 1:1
+# translation. Highest semver-increment among matching categories wins.
+categories:
+  - title: 'Breaking Changes'
+    when:
+      label: 'Major'
+  - title: 'Enhancements'
+    when:
+      labels:
+        - 'Enhancement'
+        - 'Dev Task'
+        - 'Feature'
+        - 'Dev Process Optimization'
+        - 'State/API'
+        - 'Design/UI'
+  - title: 'Bug Fixes'
+    when:
+      labels:
+        - 'Bug'
+        - 'Hot Fix'
+  - title: 'Tasks'
+    when:
+      label: 'Task'
 
-exclude-labels:
-  - 'Skip-Changelog'
+  # was: exclude-labels
+  - type: 'pre-exclude'
+    when:
+      label: 'Skip-Changelog'
+
+  # was: version-resolver.{major,minor,patch}.labels
+  - type: 'version-resolver'
+    semver-increment: 'major'
+    when:
+      label: 'Major'
+  - type: 'version-resolver'
+    semver-increment: 'minor'
+    when:
+      labels:
+        - 'Enhancement'
+        - 'Dev Task'
+        - 'Feature'
+        - 'Dev Process Optimization'
+        - 'State/API'
+        - 'Design/UI'
+  - type: 'version-resolver'
+    semver-increment: 'patch'
+    when:
+      labels:
+        - 'Bug'
+        - 'Hot Fix'
+        - 'Task'
+        - 'Security'
+  # was: version-resolver.default — a version-resolver with no `when` is the
+  # fallback when no other version-resolver category matches.
+  - type: 'version-resolver'
+    semver-increment: 'patch'
