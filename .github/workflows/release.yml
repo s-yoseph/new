@@ -2,8 +2,20 @@
 #
 # Trigger is intentionally limited to `closed`. The drafter runs with
 # `commitish: develop`, so its output only ever reflects merged PRs — firing on
-# `synchronize` re-computed an identical draft on every push to every open PR
-# (334 of 431 runs in one 34-day window). Do not re-add `opened`/`synchronize`.
+# `synchronize` re-computed an identical draft on every push to every open PR.
+# Do not re-add `opened`/`synchronize`. `workflow_dispatch` is the escape hatch
+# for refreshing a stale draft (e.g. after a label is corrected post-merge); it
+# never publishes.
+#
+# release-drafter v7 notes, learned the hard way:
+#   - It needs a previously *published* release as a comparison baseline. With
+#     only drafts present it writes a body of "* No changes" plus a warning
+#     instead of listing every merged PR the way v6 did.
+#   - Its config is resolved from the ref the run targets, not forced to the
+#     default branch (v6 failed with "must reside in your default branch").
+#   - The config schema changed; see .github/release-drafter.yml.
+# Action versions target Node 24 runtimes: release-drafter@v7 and
+# github-script@v9. Do not downgrade without re-checking `runs.using` upstream.
 name: Release Drafter and Publisher
 
 on:
@@ -11,6 +23,7 @@ on:
     types: [closed]
     branches:
       - develop
+  workflow_dispatch:
 
 # Single draft release is shared mutable state; serialise updates instead of
 # letting concurrent merges race. Never cancel — a dropped run loses its entry.
@@ -24,22 +37,26 @@ permissions:
 
 jobs:
   release:
-    if: github.event.pull_request.merged == true
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Update release draft
         id: drafter
-        uses: release-drafter/release-drafter@v6
+        uses: release-drafter/release-drafter@v7
         with:
           config-name: release-drafter.yml
           commitish: develop
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # v7 exposes an explicit `token` input (default `${{ github.token }}`),
+          # replacing v6's `GITHUB_TOKEN` env var. Kept explicit so the
+          # permission source stays visible at the call site.
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish draft release
-        if: contains(github.event.pull_request.labels.*.name, 'Publish')
-        uses: actions/github-script@v7
+        # The event guard keeps a manual refresh from ever publishing. `Publish`
+        # must be on the PR before it is merged; nothing re-runs afterwards.
+        if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'Publish')
+        uses: actions/github-script@v9
         env:
           DRAFT_ID: ${{ steps.drafter.outputs.id }}
         with:
