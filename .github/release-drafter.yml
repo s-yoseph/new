@@ -28,15 +28,11 @@ categories:
     labels:
       - 'Task'
 
-# The PR reference is written as an explicit markdown link rather than a bare
-# "#123": GitHub's autolinker renders `#123` as a link in its own HTML, but that
-# rendering was not reaching the release page in practice. `$URL` is a v6
-# change-template variable (v6 README, "Change Template Variables").
-change-template: '- $TITLE @$AUTHOR ([#$NUMBER]($URL))'
+change-template: '- $TITLE @$AUTHOR (#$NUMBER)'
 
 version-resolver:
   major:
-    labels:
+    labels: 
       - 'Major'
   minor:
     labels:
