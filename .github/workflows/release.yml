@@ -2,32 +2,17 @@
 #
 # Trigger is intentionally limited to `closed`. The drafter runs with
 # `commitish: develop`, so its output only ever reflects merged PRs — firing on
-# `synchronize` re-computed an identical draft on every push to every open PR
-# and was what exhausted the Actions budget. Do not re-add
-# `opened`/`synchronize`. `workflow_dispatch` is the escape hatch for rebuilding
-# a stale draft without merging anything; it never publishes.
+# `opened`/`synchronize` re-computes an identical draft on every push to every
+# open PR and burns Actions minutes. Do not re-add them.
 #
-# Three rules this workflow depends on, each learned the hard way:
+# Baseline release required: release-drafter v7 only lists changes since the
+# last *published* release ("A previous (published) release is required to
+# find changes"). Without one, every draft says "No changes". v0.0.0 is the
+# manually published baseline — never delete it unless a newer release exists.
 #
-#   1. Never create or publish a release by hand. A hand-made release becomes
-#      the drafter's baseline, and everything merged before it is then treated
-#      as already shipped — by a release whose notes are empty. Publish only by
-#      labelling a PR `Publish`, or by publishing the drafter's own draft.
-#   2. Keep one published release alive. The notes are always "changes since the
-#      last published release"; with none, the `Full Changelog` compare link has
-#      no previous tag to name.
-#   3. Stacked PRs collapse into one entry. GitHub reports only the PR that
-#      merged a commit into the branch (REST `/commits/{sha}/pulls` and GraphQL
-#      `associatedPullRequests` agree), and the drafter can only list what
-#      GitHub reports. If each change needs its own line, each PR must target
-#      `develop` directly — never another PR's branch.
-#
-# Pinned to release-drafter@v6 deliberately. v6 drafts the full history when no
-# published release exists; v7 refuses and writes "* No changes" instead, which
-# is how this repo's notes went blank. v6 is a node20 action that GitHub
-# currently force-runs on node24 with a warning — when that shim ends, migrate
-# to v7 *and* migrate this config to v7's `when:`/`type:` schema at the same
-# time, since v6 and v7 do not read the same config.
+# Actions are pinned to commit SHAs (tag in the trailing comment) so upstream
+# minor releases cannot change behaviour under us. Both run on Node 24.
+# Bump deliberately: resolve the new tag's SHA and update both SHA and comment.
 name: Release Drafter and Publisher
 
 on:
@@ -35,7 +20,6 @@ on:
     types: [closed]
     branches:
       - develop
-  workflow_dispatch:
 
 # Single draft release is shared mutable state; serialise updates instead of
 # letting concurrent merges race. Never cancel — a dropped run loses its entry.
@@ -49,25 +33,21 @@ permissions:
 
 jobs:
   release:
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+    if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Update release draft
         id: drafter
-        uses: release-drafter/release-drafter@v6
+        uses: release-drafter/release-drafter@978bb0b30c5ee8cdd332ced253758157150d43f0 # v7.10.0
         with:
           config-name: release-drafter.yml
           commitish: develop
-        env:
-          # v6 reads the token from the environment; it has no `token` input.
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish draft release
-        # The event guard keeps a manual refresh from ever publishing. `Publish`
-        # must be on the PR before it is merged; nothing re-runs afterwards.
-        if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'Publish')
-        uses: actions/github-script@v9
+        if: contains(github.event.pull_request.labels.*.name, 'Publish')
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           DRAFT_ID: ${{ steps.drafter.outputs.id }}
         with:
